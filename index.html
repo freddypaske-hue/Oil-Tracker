@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f0f1a">
+<title>Oil Tank Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Playfair+Display:wght@700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f0f1a;
+    --card: #1a1a2e;
+    --accent: #e8b86d;
+    --accent2: #f4d03f;
+    --text: #e8e8f0;
+    --muted: #888899;
+    --danger: #e05c5c;
+    --good: #5ce08a;
+    --blue: #6db8e8;
+    --border: rgba(232,184,109,0.15);
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    padding-bottom: 100px;
+  }
+  header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #0f0f1a 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 20px 14px;
+    position: sticky; top: 0; z-index: 100;
+  }
+  header h1 { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--accent); }
+  header p { font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: 1px; text-transform: uppercase; }
+
+  .alert-banner {
+    background: linear-gradient(135deg, rgba(224,92,92,0.15), rgba(224,92,92,0.05));
+    border: 1px solid rgba(224,92,92,0.4);
+    border-radius: 12px; padding: 12px 16px;
+    margin: 12px 16px 0;
+    display: none; align-items: center; gap: 10px;
+  }
+  .alert-banner.show { display: flex; }
+  .alert-icon { font-size: 20px; flex-shrink: 0; }
+  .alert-text { font-size: 11px; line-height: 1.5; color: var(--danger); }
+  .alert-text strong { display: block; font-size: 13px; margin-bottom: 2px; }
+
+  .tabs {
+    display: flex; background: var(--card);
+    margin: 12px 16px 0; border-radius: var(--radius);
+    padding: 4px; gap: 3px;
+  }
+  .tab {
+    flex: 1; padding: 9px 4px; border: none; background: transparent;
+    color: var(--muted); font-family: 'DM Mono', monospace;
+    font-size: 10px; letter-spacing: 0.5px; text-transform: uppercase;
+    border-radius: 12px; cursor: pointer; transition: all 0.2s;
+  }
+  .tab.active { background: var(--accent); color: var(--bg); font-weight: 500; }
+
+  .page { display: none; padding: 16px; }
+  .page.active { display: block; }
+
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+  .stat-card.full { grid-column: 1 / -1; }
+  .stat-card.highlight { border-color: rgba(232,184,109,0.4); background: rgba(232,184,109,0.05); }
+  .stat-card.danger-card { border-color: rgba(224,92,92,0.4); background: rgba(224,92,92,0.05); }
+  .stat-card.good-card { border-color: rgba(92,224,138,0.3); background: rgba(92,224,138,0.03); }
+
+  .stat-label { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 5px; }
+  .stat-value { font-family: 'Playfair Display', serif; font-size: 26px; color: var(--accent); line-height: 1; }
+  .stat-value.large { font-size: 34px; }
+  .stat-value.good { color: var(--good); }
+  .stat-value.warn { color: var(--danger); }
+  .stat-value.blue { color: var(--blue); }
+  .stat-sub { font-size: 10px; color: var(--muted); margin-top: 4px; }
+
+  .tank-visual { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 12px; }
+  .tank-bar-bg { background: rgba(255,255,255,0.05); border-radius: 8px; height: 22px; overflow: hidden; margin: 10px 0 8px; }
+  .tank-bar-fill {
+    height: 100%; border-radius: 8px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) 100%);
+    transition: width 0.8s cubic-bezier(0.4,0,0.2,1); position: relative;
+  }
+  .tank-bar-fill.low { background: linear-gradient(90deg, var(--danger), #f08c6e); }
+  .tank-bar-fill::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.2) 0%, transparent 100%);
+    border-radius: 8px;
+  }
+  .tank-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+
+  .price-nudge {
+    background: rgba(109,184,232,0.08); border: 1px solid rgba(109,184,232,0.2);
+    border-radius: 10px; padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px; cursor: pointer;
+  }
+  .price-nudge span { font-size: 11px; color: var(--blue); }
+  .price-nudge button { background: none; border: none; color: var(--blue); font-size: 11px; font-family: 'DM Mono', monospace; cursor: pointer; text-decoration: underline; }
+
+  .form-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; }
+  .form-card h2 { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--accent); margin-bottom: 14px; }
+  .form-group { margin-bottom: 14px; }
+  label { display: block; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 7px; }
+  input, textarea, select {
+    width: 100%; background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 13px 15px; color: var(--text);
+    font-family: 'DM Mono', monospace; font-size: 16px;
+    outline: none; transition: border-color 0.2s; -webkit-appearance: none;
+  }
+  input:focus, textarea:focus { border-color: var(--accent); background: rgba(232,184,109,0.05); }
+  textarea { height: 70px; resize: none; font-size: 14px; }
+  select option { background: var(--card); }
+
+  .calc-preview {
+    background: rgba(232,184,109,0.08); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px; margin: 10px 0;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  }
+  .calc-item-label { font-size: 9px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+  .calc-item-value { font-size: 15px; color: var(--accent); margin-top: 2px; }
+
+  .btn { width: 100%; padding: 15px; border: none; border-radius: 12px; font-family: 'DM Mono', monospace; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer; transition: all 0.2s; }
+  .btn-primary { background: var(--accent); color: var(--bg); font-weight: 500; }
+  .btn-primary:active { transform: scale(0.98); }
+  .btn-danger { background: transparent; color: var(--danger); border: 1px solid rgba(224,92,92,0.3); margin-top: 8px; font-size: 11px; padding: 11px; }
+
+  .entry-list { display: flex; flex-direction: column; gap: 10px; }
+  .entry-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; position: relative; }
+  .entry-card.delivery { border-color: rgba(92,224,138,0.3); background: rgba(92,224,138,0.03); }
+  .entry-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; }
+  .entry-date { font-size: 12px; color: var(--accent); font-weight: 500; }
+  .entry-month { font-size: 9px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-top: 1px; }
+  .entry-badge { font-size: 9px; letter-spacing: 1px; text-transform: uppercase; padding: 3px 8px; border-radius: 20px; background: rgba(92,224,138,0.15); color: var(--good); }
+  .entry-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 8px; }
+  .entry-stat-label { font-size: 8px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; }
+  .entry-stat-value { font-size: 13px; color: var(--text); margin-top: 1px; }
+  .entry-note { font-size: 11px; color: var(--muted); padding-top: 8px; border-top: 1px solid var(--border); font-style: italic; }
+  .delete-btn { position: absolute; top: 12px; right: 12px; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; padding: 2px 6px; line-height: 1; }
+  .delete-btn:active { color: var(--danger); }
+
+  .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .chart-card h3 { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+  .chart-wrap { position: relative; height: 200px; }
+
+  .month-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .month-item { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px; padding: 12px; }
+  .month-name { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .month-litres { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--accent); }
+  .month-cost { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .month-bar-bg { background: rgba(255,255,255,0.05); border-radius: 4px; height: 4px; margin-top: 8px; overflow: hidden; }
+  .month-bar-fill { height: 100%; border-radius: 4px; background: var(--accent); }
+
+  .settings-section { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; }
+  .settings-section h3 { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  .info-row:last-child { border-bottom: none; }
+  .info-row-label { color: var(--muted); }
+  .info-row-value { color: var(--text); }
+
+  .section-title { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--accent); margin-bottom: 14px; }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--muted); }
+  .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+  .empty-state p { font-size: 12px; line-height: 1.6; }
+
+  .toast { position: fixed; bottom: 85px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--good); color: var(--bg); padding: 11px 22px; border-radius: 100px; font-size: 12px; letter-spacing: 1px; opacity: 0; transition: all 0.3s; pointer-events: none; z-index: 999; white-space: nowrap; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.5) sepia(1) saturate(2) hue-rotate(5deg); cursor: pointer; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 500; align-items: flex-end; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: var(--card); border-radius: 20px 20px 0 0; padding: 24px; width: 100%; border-top: 1px solid var(--border); }
+  .modal h3 { font-family: 'Playfair Display', serif; font-size: 18px; color: var(--accent); margin-bottom: 16px; }
+  .modal-close { float: right; background: none; border: none; color: var(--muted); font-size: 22px; cursor: pointer; margin-top: -4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🛢 Oil Tank</h1>
+  <p>Woodminton Farmhouse</p>
+</header>
+
+<div class="alert-banner" id="alert-banner">
+  <div class="alert-icon">⚠️</div>
+  <div class="alert-text">
+    <strong id="alert-title">Tank running low</strong>
+    <span id="alert-body">Consider placing an order soon.</span>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="showPage('dashboard',this)">Dash</button>
+  <button class="tab" onclick="showPage('log',this)">Log</button>
+  <button class="tab" onclick="showPage('history',this)">History</button>
+  <button class="tab" onclick="showPage('analysis',this)">Analysis</button>
+  <button class="tab" onclick="showPage('settings',this)">Settings</button>
+</div>
+
+<!-- DASHBOARD -->
+<div id="page-dashboard" class="page active">
+  <div class="price-nudge" onclick="openPriceModal()">
+    <span>⛽ Current price: <strong id="nudge-ppl">63p</strong>/L</span>
+    <button>Update</button>
+  </div>
+  <div class="tank-visual">
+    <div class="stat-label">Tank Level</div>
+    <div id="dash-litres" class="stat-value large">—</div>
+    <div class="stat-sub">of <span id="dash-total">4500</span>L · <span id="tank-pct">—</span></div>
+    <div class="tank-bar-bg"><div class="tank-bar-fill" id="tank-bar" style="width:0%"></div></div>
+    <div class="tank-labels"><span>Empty</span><span>Full</span></div>
+  </div>
+  <div class="stat-grid">
+    <div class="stat-card highlight full" id="days-remaining-card">
+      <div class="stat-label">Estimated Days Remaining</div>
+      <div class="stat-value large" id="dash-days-remaining">—</div>
+      <div class="stat-sub" id="dash-runout">at current daily burn rate</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Daily Use</div>
+      <div class="stat-value" id="dash-daily">—</div>
+      <div class="stat-sub">litres / day</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Cost / Day</div>
+      <div class="stat-value" id="dash-cost-day">—</div>
+      <div class="stat-sub">at current rate</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Used Since Last</div>
+      <div class="stat-value" id="dash-used">—</div>
+      <div class="stat-sub" id="dash-days-ago">— days ago</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Cost Since Last</div>
+      <div class="stat-value" id="dash-cost-last">—</div>
+      <div class="stat-sub">at <span id="dash-ppl-val">63p</span>/L</div>
+    </div>
+    <div class="stat-card full">
+      <div class="stat-label">Annual Projection</div>
+      <div class="stat-value" id="dash-projection">—</div>
+      <div class="stat-sub">based on current daily rate × 365</div>
+    </div>
+    <div class="stat-card good-card full">
+      <div class="stat-label">Year-to-Date Delivery Spend</div>
+      <div class="stat-value blue" id="dash-ytd">—</div>
+      <div class="stat-sub" id="dash-ytd-sub">deliveries logged this year</div>
+    </div>
+  </div>
+</div>
+
+<!-- LOG -->
+<div id="page-log" class="page">
+  <div class="form-card">
+    <h2>New Reading</h2>
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" id="log-date">
+    </div>
+    <div class="form-group">
+      <label>Stick Reading (cm)</label>
+      <input type="number" id="log-cm" inputmode="decimal" placeholder="e.g. 24" step="0.1" min="0">
+    </div>
+    <div id="calc-preview" class="calc-preview" style="display:none">
+      <div><div class="calc-item-label">Litres in tank</div><div class="calc-item-value" id="prev-litres">—</div></div>
+      <div><div class="calc-item-label">Used since last</div><div class="calc-item-value" id="prev-used">—</div></div>
+      <div><div class="calc-item-label">Days since last</div><div class="calc-item-value" id="prev-days">—</div></div>
+      <div><div class="calc-item-label">Litres / day</div><div class="calc-item-value" id="prev-daily">—</div></div>
+      <div><div class="calc-item-label">Cost since last</div><div class="calc-item-value" id="prev-cost">—</div></div>
+      <div><div class="calc-item-label">Cost / day</div><div class="calc-item-value" id="prev-costday">—</div></div>
+    </div>
+    <div class="form-group">
+      <label>Delivery? (optional)</label>
+      <select id="log-delivery">
+        <option value="">No delivery</option>
+        <option value="yes">Yes — delivery made</option>
+      </select>
+    </div>
+    <div id="delivery-fields" style="display:none">
+      <div class="form-group">
+        <label>Delivery Volume (L)</label>
+        <input type="number" id="log-delivery-vol" inputmode="numeric" placeholder="e.g. 1000">
+      </div>
+      <div class="form-group">
+        <label>Delivery Cost (£)</label>
+        <input type="number" id="log-delivery-cost" inputmode="decimal" placeholder="e.g. 627.23" step="0.01">
+      </div>
+      <div class="form-group">
+        <label>Cost Per Litre (auto-calculated)</label>
+        <input type="text" id="log-delivery-ppl" readonly placeholder="Enter volume + cost above" style="color:var(--muted);">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Notes (optional)</label>
+      <textarea id="log-notes" placeholder="e.g. Boiler serviced, AGA off, etc."></textarea>
+    </div>
+    <button class="btn btn-primary" onclick="saveEntry()">Save Reading</button>
+  </div>
+</div>
+
+<!-- HISTORY -->
+<div id="page-history" class="page">
+  <div class="section-title">History</div>
+  <div id="entry-list" class="entry-list"></div>
+  <div id="history-empty" class="empty-state">
+    <div class="icon">📋</div><p>No readings logged yet.</p>
+  </div>
+</div>
+
+<!-- ANALYSIS -->
+<div id="page-analysis" class="page">
+  <div class="section-title">Analysis</div>
+  <div id="analysis-content">
+    <div class="chart-card">
+      <h3>Tank Level Over Time</h3>
+      <div class="chart-wrap"><canvas id="chart-level"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Daily Consumption Rate (L/day)</h3>
+      <div class="chart-wrap"><canvas id="chart-daily"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Monthly Consumption</h3>
+      <div id="month-grid" class="month-grid"></div>
+    </div>
+    <div class="chart-card">
+      <h3>Cost Per Day Over Time</h3>
+      <div class="chart-wrap"><canvas id="chart-cost"></canvas></div>
+    </div>
+  </div>
+  <div id="analysis-empty" class="empty-state" style="display:none">
+    <div class="icon">📊</div>
+    <p>Not enough data yet.<br>Add more readings to see analysis.</p>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div id="page-settings" class="page">
+  <div class="section-title">Settings</div>
+  <div class="settings-section">
+    <h3>Tank Configuration</h3>
+    <div class="form-group"><label>Total Tank Capacity (L)</label><input type="number" id="set-capacity" value="4500" inputmode="numeric"></div>
+    <div class="form-group"><label>1cm = how many litres?</label><input type="number" id="set-cm-rate" value="37.5" inputmode="decimal" step="0.1"></div>
+    <div class="form-group"><label>Price per litre (£)</label><input type="number" id="set-ppl" value="0.63" inputmode="decimal" step="0.001"></div>
+    <div class="form-group"><label>Low tank alert threshold (%)</label><input type="number" id="set-threshold" value="20" inputmode="numeric" min="5" max="50"></div>
+    <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+  </div>
+  <div class="settings-section">
+    <h3>Summary</h3>
+    <div class="info-row"><span class="info-row-label">Total readings</span><span class="info-row-value" id="info-count">0</span></div>
+    <div class="info-row"><span class="info-row-label">First reading</span><span class="info-row-value" id="info-first">—</span></div>
+    <div class="info-row"><span class="info-row-label">Last reading</span><span class="info-row-value" id="info-last">—</span></div>
+    <div class="info-row"><span class="info-row-label">Total oil delivered</span><span class="info-row-value" id="info-delivered">—</span></div>
+    <div class="info-row"><span class="info-row-label">Total delivery spend</span><span class="info-row-value" id="info-delcost">—</span></div>
+  </div>
+  <div class="settings-section">
+    <h3>Data</h3>
+    <button class="btn btn-danger" onclick="exportCSV()">⬇ Export to CSV</button>
+    <button class="btn btn-danger" onclick="confirmClear()">🗑 Clear All Data</button>
+  </div>
+</div>
+
+<!-- PRICE MODAL -->
+<div class="modal-overlay" id="price-modal" onclick="closePriceModal(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="closePriceModal()">×</button>
+    <h3>Update Price Per Litre</h3>
+    <div class="form-group">
+      <label>New price (£)</label>
+      <input type="number" id="modal-ppl" inputmode="decimal" step="0.001" placeholder="e.g. 0.63">
+    </div>
+    <button class="btn btn-primary" onclick="savePriceModal()">Save Price</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let settings = { capacity: 4500, cmRate: 37.5, ppl: 0.63, threshold: 20 };
+let entries = [];
+let charts = {};
+
+function load() {
+  try {
+    const s = localStorage.getItem('oil_settings');
+    if (s) settings = { ...settings, ...JSON.parse(s) };
+    const e = localStorage.getItem('oil_entries');
+    if (e) entries = JSON.parse(e);
+    entries.sort((a,b) => new Date(a.date) - new Date(b.date));
+  } catch(e) {}
+}
+function save() {
+  localStorage.setItem('oil_settings', JSON.stringify(settings));
+  localStorage.setItem('oil_entries', JSON.stringify(entries));
+}
+
+function cmToLitres(cm) { return Math.round(cm * settings.cmRate * 10) / 10; }
+function fmt(l) { return parseFloat(l).toFixed(1) + 'L'; }
+function gbp(v) { return '£' + parseFloat(v).toFixed(2); }
+function daysBetween(a, b) { return Math.round((new Date(b) - new Date(a)) / 86400000); }
+function fmtDate(d) { return new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' }); }
+function fmtShort(d) { return new Date(d + 'T12:00:00').toLocaleDateString('en-GB', { day:'numeric', month:'short' }); }
+function today() { return new Date().toISOString().slice(0,10); }
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+}
+
+function showPage(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+  if (id === 'dashboard') renderDashboard();
+  if (id === 'history') renderHistory();
+  if (id === 'analysis') renderAnalysis();
+  if (id === 'settings') renderSettings();
+  if (id === 'log') initLogForm();
+}
+
+function getStats() {
+  const last = entries[entries.length - 1];
+  const prev = entries[entries.length - 2];
+  if (!last) return null;
+  const litresInTank = cmToLitres(last.cm);
+  const pct = Math.min(100, litresInTank / settings.capacity * 100);
+  let daily = null, days = null, used = null;
+  if (prev) {
+    days = daysBetween(prev.date, last.date);
+    const prevL = cmToLitres(prev.cm);
+    used = prevL - litresInTank;
+    if (last.deliveryVol) used = prevL + last.deliveryVol - litresInTank;
+    if (days > 0 && used > 0) daily = used / days;
+  }
+  return { last, litresInTank, pct, daily, days, used };
+}
+
+function updateAlert() {
+  const s = getStats();
+  const banner = document.getElementById('alert-banner');
+  if (!s) { banner.classList.remove('show'); return; }
+  if (s.pct <= (settings.threshold || 20)) {
+    const daysLeft = s.daily ? Math.round(s.litresInTank / s.daily) : null;
+    document.getElementById('alert-title').textContent = `Tank at ${s.pct.toFixed(0)}% — consider ordering`;
+    document.getElementById('alert-body').textContent = daysLeft ? `Approx. ${daysLeft} days of fuel remaining at current burn rate.` : 'Level is low — check consumption before ordering.';
+    banner.classList.add('show');
+  } else {
+    banner.classList.remove('show');
+  }
+}
+
+function renderDashboard() {
+  const s = getStats();
+  document.getElementById('nudge-ppl').textContent = (settings.ppl * 100).toFixed(0) + 'p';
+  document.getElementById('dash-ppl-val').textContent = (settings.ppl * 100).toFixed(0) + 'p';
+  document.getElementById('dash-total').textContent = settings.capacity;
+  if (!s) return;
+
+  document.getElementById('dash-litres').textContent = fmt(s.litresInTank);
+  document.getElementById('tank-pct').textContent = s.pct.toFixed(0) + '%';
+  const bar = document.getElementById('tank-bar');
+  bar.style.width = s.pct.toFixed(0) + '%';
+  bar.className = 'tank-bar-fill' + (s.pct < (settings.threshold || 20) ? ' low' : '');
+  document.getElementById('dash-litres').className = 'stat-value large' + (s.pct < 20 ? ' warn' : s.pct > 60 ? ' good' : '');
+
+  if (s.daily) {
+    const daysLeft = Math.round(s.litresInTank / s.daily);
+    document.getElementById('dash-days-remaining').textContent = daysLeft;
+    document.getElementById('dash-runout').textContent = `Est. runout: ${addDays(s.last.date, daysLeft)}`;
+    const dc = document.getElementById('days-remaining-card');
+    dc.className = 'stat-card full ' + (daysLeft < 30 ? 'danger-card' : daysLeft < 60 ? 'highlight' : 'good-card');
+    document.getElementById('dash-daily').textContent = s.daily.toFixed(1);
+    document.getElementById('dash-cost-day').textContent = gbp(s.daily * settings.ppl);
+    document.getElementById('dash-projection').textContent = gbp(s.daily * 365 * settings.ppl) + ' / year';
+  } else {
+    document.getElementById('dash-days-remaining').textContent = '—';
+    document.getElementById('dash-runout').textContent = 'Need 2+ readings to calculate';
+  }
+
+  if (s.used != null && s.days != null) {
+    document.getElementById('dash-used').textContent = s.used > 0 ? fmt(s.used) : '—';
+    document.getElementById('dash-cost-last').textContent = s.used > 0 ? gbp(s.used * settings.ppl) : '—';
+    document.getElementById('dash-days-ago').textContent = s.days + ' day' + (s.days !== 1 ? 's' : '') + ' ago';
+  }
+
+  const year = new Date().getFullYear();
+  const ytd = entries.filter(e => e.date.startsWith(year) && e.deliveryCost);
+  const ytdSpend = ytd.reduce((sum, e) => sum + (e.deliveryCost || 0), 0);
+  document.getElementById('dash-ytd').textContent = ytdSpend > 0 ? gbp(ytdSpend) : '—';
+  document.getElementById('dash-ytd-sub').textContent = ytd.length + ' deliver' + (ytd.length === 1 ? 'y' : 'ies') + ' in ' + year;
+
+  updateAlert();
+}
+
+function initLogForm() {
+  document.getElementById('log-date').value = today();
+  ['log-cm','log-notes','log-delivery-vol','log-delivery-cost','log-delivery-ppl'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('log-delivery').value = '';
+  document.getElementById('delivery-fields').style.display = 'none';
+  document.getElementById('calc-preview').style.display = 'none';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('log-cm').addEventListener('input', updateCalcPreview);
+  document.getElementById('log-date').addEventListener('input', updateCalcPreview);
+  document.getElementById('log-delivery').addEventListener('change', function() {
+    document.getElementById('delivery-fields').style.display = this.value === 'yes' ? 'block' : 'none';
+  });
+  ['log-delivery-vol','log-delivery-cost'].forEach(id => document.getElementById(id).addEventListener('input', updateDeliveryPpl));
+});
+
+function updateDeliveryPpl() {
+  const vol = parseFloat(document.getElementById('log-delivery-vol').value);
+  const cost = parseFloat(document.getElementById('log-delivery-cost').value);
+  document.getElementById('log-delivery-ppl').value = (vol && cost) ? (cost / vol * 100).toFixed(2) + 'p per litre' : '';
+}
+
+function updateCalcPreview() {
+  const cm = parseFloat(document.getElementById('log-cm').value);
+  const date = document.getElementById('log-date').value;
+  if (!cm || !date) { document.getElementById('calc-preview').style.display = 'none'; return; }
+  const newL = cmToLitres(cm);
+  document.getElementById('calc-preview').style.display = 'grid';
+  document.getElementById('prev-litres').textContent = fmt(newL);
+  const last = entries[entries.length - 1];
+  if (last) {
+    const days = daysBetween(last.date, date);
+    const lastL = cmToLitres(last.cm);
+    const used = lastL - newL;
+    const daily = days > 0 && used > 0 ? used / days : 0;
+    document.getElementById('prev-used').textContent = used > 0 ? fmt(used) : '—';
+    document.getElementById('prev-days').textContent = days > 0 ? days + 'd' : '—';
+    document.getElementById('prev-daily').textContent = daily > 0 ? daily.toFixed(1) + 'L' : '—';
+    document.getElementById('prev-cost').textContent = used > 0 ? gbp(used * settings.ppl) : '—';
+    document.getElementById('prev-costday').textContent = daily > 0 ? gbp(daily * settings.ppl) : '—';
+  } else {
+    ['prev-used','prev-days','prev-daily','prev-cost','prev-costday'].forEach(id => document.getElementById(id).textContent = '—');
+  }
+}
+
+function saveEntry() {
+  const cm = parseFloat(document.getElementById('log-cm').value);
+  const date = document.getElementById('log-date').value;
+  if (!cm || !date) { showToast('⚠ Enter a date and reading'); return; }
+  const entry = { id: Date.now(), date, cm, notes: document.getElementById('log-notes').value.trim(), deliveryVol: null, deliveryCost: null };
+  if (document.getElementById('log-delivery').value === 'yes') {
+    const vol = parseFloat(document.getElementById('log-delivery-vol').value);
+    const cost = parseFloat(document.getElementById('log-delivery-cost').value);
+    if (vol) entry.deliveryVol = vol;
+    if (cost) entry.deliveryCost = cost;
+  }
+  entries.push(entry);
+  entries.sort((a,b) => new Date(a.date) - new Date(b.date));
+  save(); showToast('✓ Reading saved'); initLogForm();
+}
+
+function renderHistory() {
+  const list = document.getElementById('entry-list');
+  const empty = document.getElementById('history-empty');
+  list.innerHTML = '';
+  if (!entries.length) { empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  [...entries].reverse().forEach(entry => {
+    const ri = entries.indexOf(entry);
+    const prev = entries[ri - 1];
+    const lv = cmToLitres(entry.cm);
+    let usedStr='—',dailyStr='—',costStr='—',daysStr='—',costDayStr='—';
+    if (prev) {
+      const days = daysBetween(prev.date, entry.date);
+      const prevL = cmToLitres(prev.cm);
+      let used = prevL - lv;
+      if (entry.deliveryVol) used = prevL + entry.deliveryVol - lv;
+      const daily = days > 0 && used > 0 ? used / days : 0;
+      usedStr = used > 0 ? fmt(used) : '—';
+      daysStr = days > 0 ? days + 'd' : '—';
+      dailyStr = daily > 0 ? daily.toFixed(1) + 'L/d' : '—';
+      costStr = used > 0 ? gbp(used * settings.ppl) : '—';
+      costDayStr = daily > 0 ? gbp(daily * settings.ppl) : '—';
+    }
+    const card = document.createElement('div');
+    card.className = 'entry-card' + (entry.deliveryVol ? ' delivery' : '');
+    card.innerHTML = `
+      <button class="delete-btn" onclick="deleteEntry(${entry.id})">×</button>
+      <div class="entry-header">
+        <div>
+          <div class="entry-date">${fmtDate(entry.date)}</div>
+          <div class="entry-month">${entry.cm}cm → ${fmt(lv)}</div>
+        </div>
+        ${entry.deliveryVol ? `<div class="entry-badge">+${entry.deliveryVol}L</div>` : ''}
+      </div>
+      <div class="entry-stats">
+        <div><div class="entry-stat-label">Used</div><div class="entry-stat-value">${usedStr}</div></div>
+        <div><div class="entry-stat-label">Days</div><div class="entry-stat-value">${daysStr}</div></div>
+        <div><div class="entry-stat-label">L/day</div><div class="entry-stat-value">${dailyStr}</div></div>
+        <div><div class="entry-stat-label">Cost</div><div class="entry-stat-value">${costStr}</div></div>
+        <div><div class="entry-stat-label">£/day</div><div class="entry-stat-value">${costDayStr}</div></div>
+        <div><div class="entry-stat-label">Delivery</div><div class="entry-stat-value">${entry.deliveryCost ? gbp(entry.deliveryCost) : '—'}</div></div>
+      </div>
+      ${entry.notes ? `<div class="entry-note">📝 ${entry.notes}</div>` : ''}
+    `;
+    list.appendChild(card);
+  });
+}
+
+function deleteEntry(id) {
+  if (!confirm('Delete this reading?')) return;
+  entries = entries.filter(e => e.id !== id);
+  save(); renderHistory();
+}
+
+function renderAnalysis() {
+  if (entries.length < 2) {
+    document.getElementById('analysis-content').style.display = 'none';
+    document.getElementById('analysis-empty').style.display = 'block';
+    return;
+  }
+  document.getElementById('analysis-content').style.display = 'block';
+  document.getElementById('analysis-empty').style.display = 'none';
+
+  const labels = [], levelData = [], dailyData = [], costData = [];
+  entries.forEach((entry, i) => {
+    labels.push(fmtShort(entry.date));
+    levelData.push(cmToLitres(entry.cm));
+    const prev = entries[i - 1];
+    if (prev) {
+      const days = daysBetween(prev.date, entry.date);
+      const prevL = cmToLitres(prev.cm);
+      let used = prevL - cmToLitres(entry.cm);
+      if (entry.deliveryVol) used = prevL + entry.deliveryVol - cmToLitres(entry.cm);
+      const daily = days > 0 && used > 0 ? used / days : 0;
+      dailyData.push(daily > 0 ? parseFloat(daily.toFixed(2)) : null);
+      costData.push(daily > 0 ? parseFloat((daily * settings.ppl).toFixed(2)) : null);
+    } else { dailyData.push(null); costData.push(null); }
+  });
+
+  const baseOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { backgroundColor: '#1a1a2e', titleColor: '#e8b86d', bodyColor: '#e8e8f0', borderColor: 'rgba(232,184,109,0.3)', borderWidth: 1 } },
+    scales: {
+      x: { ticks: { color: '#888899', font: { family: 'DM Mono', size: 9 }, maxRotation: 45, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      y: { ticks: { color: '#888899', font: { family: 'DM Mono', size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+    }
+  };
+
+  // Destroy old charts
+  Object.values(charts).forEach(c => { try { c.destroy(); } catch(e) {} });
+  charts = {};
+
+  // Tank level
+  const threshL = settings.capacity * (settings.threshold / 100);
+  charts.level = new Chart(document.getElementById('chart-level'), {
+    type: 'line',
+    data: { labels, datasets: [
+      { data: levelData, borderColor: '#e8b86d', backgroundColor: 'rgba(232,184,109,0.1)', fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#e8b86d' },
+      { data: new Array(labels.length).fill(threshL), borderColor: 'rgba(224,92,92,0.5)', borderDash: [5,4], pointRadius: 0, fill: false }
+    ]},
+    options: { ...baseOpts }
+  });
+
+  // Daily consumption bar
+  charts.daily = new Chart(document.getElementById('chart-daily'), {
+    type: 'bar',
+    data: { labels, datasets: [{
+      data: dailyData,
+      backgroundColor: dailyData.map(v => v === null ? 'transparent' : v > 20 ? 'rgba(224,92,92,0.7)' : 'rgba(109,184,232,0.65)'),
+      borderRadius: 4
+    }]},
+    options: { ...baseOpts }
+  });
+
+  // Monthly cards
+  const monthMap = {};
+  entries.forEach((entry, i) => {
+    const prev = entries[i - 1];
+    if (!prev) return;
+    const days = daysBetween(prev.date, entry.date);
+    const prevL = cmToLitres(prev.cm);
+    let used = prevL - cmToLitres(entry.cm);
+    if (entry.deliveryVol) used = prevL + entry.deliveryVol - cmToLitres(entry.cm);
+    if (used <= 0 || days <= 0) return;
+    const key = entry.date.slice(0,7);
+    monthMap[key] = (monthMap[key] || 0) + used;
+  });
+  const months = Object.keys(monthMap).sort();
+  const maxM = Math.max(...Object.values(monthMap));
+  const grid = document.getElementById('month-grid');
+  grid.innerHTML = '';
+  months.forEach(m => {
+    const val = monthMap[m];
+    const name = new Date(m + '-15').toLocaleDateString('en-GB', { month:'short', year:'2-digit' });
+    const pct = (val / maxM * 100).toFixed(0);
+    const div = document.createElement('div');
+    div.className = 'month-item';
+    div.innerHTML = `<div class="month-name">${name}</div><div class="month-litres">${val.toFixed(0)}L</div><div class="month-cost">${gbp(val * settings.ppl)}</div><div class="month-bar-bg"><div class="month-bar-fill" style="width:${pct}%"></div></div>`;
+    grid.appendChild(div);
+  });
+
+  // Cost per day
+  charts.cost = new Chart(document.getElementById('chart-cost'), {
+    type: 'line',
+    data: { labels, datasets: [{
+      data: costData, borderColor: '#5ce08a', backgroundColor: 'rgba(92,224,138,0.1)',
+      fill: true, tension: 0.3, pointRadius: 3, pointBackgroundColor: '#5ce08a'
+    }]},
+    options: { ...baseOpts, scales: { ...baseOpts.scales, y: { ...baseOpts.scales.y, ticks: { ...baseOpts.scales.y.ticks, callback: v => '£' + v.toFixed(2) } } } }
+  });
+}
+
+function renderSettings() {
+  document.getElementById('set-capacity').value = settings.capacity;
+  document.getElementById('set-cm-rate').value = settings.cmRate;
+  document.getElementById('set-ppl').value = settings.ppl;
+  document.getElementById('set-threshold').value = settings.threshold || 20;
+  document.getElementById('info-count').textContent = entries.length;
+  document.getElementById('info-first').textContent = entries.length ? fmtDate(entries[0].date) : '—';
+  document.getElementById('info-last').textContent = entries.length ? fmtDate(entries[entries.length-1].date) : '—';
+  const totalDel = entries.reduce((s,e) => s + (e.deliveryVol || 0), 0);
+  const totalCost = entries.reduce((s,e) => s + (e.deliveryCost || 0), 0);
+  document.getElementById('info-delivered').textContent = totalDel ? totalDel + 'L' : '—';
+  document.getElementById('info-delcost').textContent = totalCost ? gbp(totalCost) : '—';
+}
+
+function saveSettings() {
+  settings.capacity = parseFloat(document.getElementById('set-capacity').value) || 4500;
+  settings.cmRate = parseFloat(document.getElementById('set-cm-rate').value) || 37.5;
+  settings.ppl = parseFloat(document.getElementById('set-ppl').value) || 0.63;
+  settings.threshold = parseFloat(document.getElementById('set-threshold').value) || 20;
+  save(); showToast('✓ Settings saved'); updateAlert(); renderDashboard();
+}
+
+function openPriceModal() {
+  document.getElementById('modal-ppl').value = settings.ppl;
+  document.getElementById('price-modal').classList.add('show');
+}
+function closePriceModal(e) {
+  if (!e || e.target === document.getElementById('price-modal'))
+    document.getElementById('price-modal').classList.remove('show');
+}
+function savePriceModal() {
+  const v = parseFloat(document.getElementById('modal-ppl').value);
+  if (!v) { showToast('⚠ Enter a valid price'); return; }
+  settings.ppl = v; save();
+  closePriceModal();
+  showToast('✓ Price updated to ' + (v * 100).toFixed(1) + 'p/L');
+  renderDashboard();
+}
+
+function exportCSV() {
+  if (!entries.length) { showToast('No data to export'); return; }
+  const headers = ['Date','CM','Litres','Used Since Last','Days Since Last','Litres/Day','Cost Since Last','Cost/Day','Delivery Vol','Delivery Cost','Cost Per Litre','Notes'];
+  const rows = entries.map((entry, idx) => {
+    const prev = entries[idx - 1];
+    const lv = cmToLitres(entry.cm);
+    let used='',days='',daily='',cost='',costday='',delPpl='';
+    if (prev) {
+      const d = daysBetween(prev.date, entry.date);
+      const prevL = cmToLitres(prev.cm);
+      let u = prevL - lv;
+      if (entry.deliveryVol) u = prevL + entry.deliveryVol - lv;
+      if (u > 0 && d > 0) { used=u.toFixed(1); days=d; daily=(u/d).toFixed(2); cost=(u*settings.ppl).toFixed(2); costday=((u/d)*settings.ppl).toFixed(2); }
+    }
+    if (entry.deliveryVol && entry.deliveryCost) delPpl = (entry.deliveryCost/entry.deliveryVol*100).toFixed(2)+'p';
+    return [entry.date,entry.cm,lv,used,days,daily,cost,costday,entry.deliveryVol||'',entry.deliveryCost||'',delPpl,entry.notes||''].join(',');
+  });
+  const csv = [headers.join(','),...rows].join('\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'oil-tracker-' + today() + '.csv';
+  a.click(); showToast('✓ Exported');
+}
+
+function confirmClear() {
+  if (confirm('Delete ALL readings? This cannot be undone.')) {
+    entries = []; save(); showToast('All data cleared'); renderDashboard();
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+const HISTORICAL = [
+  {id:1,  date:'2025-09-15',cm:21,  notes:'',deliveryVol:null,deliveryCost:null},
+  {id:2,  date:'2025-09-26',cm:20,  notes:'209 + 501L = 710L fuel delivered',deliveryVol:710,deliveryCost:637},
+  {id:3,  date:'2025-10-06',cm:18,  notes:'',deliveryVol:null,deliveryCost:null},
+  {id:4,  date:'2025-10-14',cm:17,  notes:'New wiser system installed',deliveryVol:null,deliveryCost:null},
+  {id:5,  date:'2025-10-22',cm:15.5,notes:'',deliveryVol:null,deliveryCost:null},
+  {id:6,  date:'2025-10-29',cm:32.2,notes:'1000L delivered @ £627.23 - reading from sight tube',deliveryVol:1000,deliveryCost:627.23},
+  {id:7,  date:'2025-11-11',cm:31.5,notes:'',deliveryVol:null,deliveryCost:null},
+  {id:8,  date:'2025-11-17',cm:30.2,notes:'',deliveryVol:null,deliveryCost:null},
+  {id:9,  date:'2025-11-25',cm:26.3,notes:'Aga turned off this day',deliveryVol:null,deliveryCost:null},
+  {id:10, date:'2025-12-08',cm:24.2,notes:'',deliveryVol:null,deliveryCost:null},
+  {id:11, date:'2025-12-17',cm:15.3,notes:'',deliveryVol:null,deliveryCost:null},
+  {id:12, date:'2026-01-08',cm:13.7,notes:'',deliveryVol:null,deliveryCost:null},
+  {id:13, date:'2026-01-13',cm:11,  notes:'',deliveryVol:null,deliveryCost:null},
+  {id:14, date:'2026-01-19',cm:10.5,notes:'We had spare room on a lot',deliveryVol:null,deliveryCost:null},
+  {id:15, date:'2026-01-21',cm:36.4,notes:'1000 ltrs delivered',deliveryVol:1000,deliveryCost:null},
+  {id:16, date:'2026-01-27',cm:31.5,notes:'',deliveryVol:null,deliveryCost:null},
+  {id:17, date:'2026-02-07',cm:28.6,notes:'',deliveryVol:null,deliveryCost:null},
+  {id:18, date:'2026-02-17',cm:24,  notes:'',deliveryVol:null,deliveryCost:null},
+  {id:19, date:'2026-03-04',cm:24,  notes:'Boiler serviced 2nd Mar',deliveryVol:null,deliveryCost:null},
+];
+
+load();
+if (entries.length === 0) { entries = HISTORICAL; save(); }
+document.getElementById('log-date').value = today();
+renderDashboard();
+</script>
+</body>
+</html>
